@@ -1,0 +1,23 @@
+<?php
+/**
+ * @file
+ * Install, update and uninstall functions for the Paysto module.
+ */
+
+/**
+ * Implements hook_requirements().
+ */
+function commerce_paysto_requirements($phase) {
+  $requirements = [];
+
+  if ($phase == 'install') {
+    $dependency_installed = class_exists('PaystoSdkPHP\Client');
+    $requirements['paysto_status'] = [
+      'title' => t('Paysto'),
+      'value' => t('Composer dependency alexsaab/paysto-sdk-php is not installed.'),
+      'severity' => $dependency_installed ? REQUIREMENT_OK : REQUIREMENT_ERROR,
+    ];
+  }
+
+  return $requirements;
+}

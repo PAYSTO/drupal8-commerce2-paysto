@@ -1,0 +1,6 @@
+paysto_fee:
+  label: 'Paysto Fee'
+  singular_label: 'Paysto Fee'
+  plural_label: 'Paysto Fees'
+  has_ui: true
+  weight: 100

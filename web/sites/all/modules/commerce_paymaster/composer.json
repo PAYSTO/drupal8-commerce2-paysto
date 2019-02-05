@@ -1,0 +1,32 @@
+{
+  "name": "drupal/commerce_paysto",
+  "type": "drupal-module",
+  "description": "Provides payment gateway for Paysto. Paysto include many payment methods such as Visa, MasterCard, Webmoney, Yandex Money, MTS, Beeline, Russian Post and ect.",
+  "keywords": [
+    "Drupal",
+    "Drupal Commerce",
+    "Commerce Payment Method",
+    "Paumaster"
+  ],
+  "license": "GPL-2.0+",
+  "homepage": "https://www.drupal.org/project/commerce_paysto",
+  "authors": [
+    {
+      "name": "Alex Agafonov (alexsaab)",
+      "homepage": "https://drupal.org/u/Alexsaab",
+      "role": "Maintainer"
+    },
+    {
+      "name": "Contributors",
+      "homepage": "https://www.drupal.org/node/2971999/committers",
+      "role": "Contributors"
+    }
+  ],
+  "support": {
+    "issues": "https://drupal.org/project/issues/commerce_paysto",
+    "source": "http://cgit.drupalcode.org/commerce_paysto"
+  },
+  "require": {
+    "alexsaab/paysto-sdk-php": "dev"
+  }
+}
