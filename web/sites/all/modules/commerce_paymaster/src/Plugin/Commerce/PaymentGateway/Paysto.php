@@ -154,13 +154,14 @@ class Paysto extends OffsitePaymentGatewayBase
             $values = $form_state->getValue($form['#parents']);
             $this->configuration['merchant_id'] = $values['merchant_id'];
             $this->configuration['secret'] = $values['secret'];
-            $this->configuration['hash_method'] = $values['hash_method'];
             $this->configuration['description'] = $values['description'];
             foreach ($this->getProductTypes() as $type) {
                 $this->configuration['vat_product_' . $type] = $values['vat_product_' . $type];
             }
 
             $this->configuration['vat_shipping'] = $values['vat_shipping'];
+            $this->configuration['use_ip_only_from_server_list'] = $values['use_ip_only_from_server_list'];
+            $this->configuration['server_list'] = $values['server_list'];
         }
     }
 
@@ -262,52 +263,39 @@ class Paysto extends OffsitePaymentGatewayBase
                 exit;
             }
         }
-
-
     }
-
-
+    
     /**
-     * Get hash
-     * @param $LMI_MERCHANT_ID
-     * @param $LMI_PAYMENT_NO
-     * @param $LMI_SYS_PAYMENT_ID
-     * @param $LMI_SYS_PAYMENT_DATE
-     * @param $LMI_PAYMENT_AMOUNT
-     * @param $LMI_CURRENCY
-     * @param $LMI_PAID_AMOUNT
-     * @param $LMI_PAID_CURRENCY
-     * @param $LMI_PAYMENT_SYSTEM
-     * @param $LMI_SIM_MODE
-     * @param $SECRET
-     * @param string $hash_method
+     * Return hash md5 HMAC
+     * @param $x_login
+     * @param $x_fp_sequence
+     * @param $x_fp_timestamp
+     * @param $x_amount
+     * @param $x_currency_code
+     * @param $secret
      * @return string
      */
-    public static function getHash($LMI_MERCHANT_ID, $LMI_PAYMENT_NO, $LMI_SYS_PAYMENT_ID, $LMI_SYS_PAYMENT_DATE, $LMI_PAYMENT_AMOUNT, $LMI_CURRENCY, $LMI_PAID_AMOUNT, $LMI_PAID_CURRENCY, $LMI_PAYMENT_SYSTEM, $LMI_SIM_MODE, $SECRET, $hash_method = 'md5')
+    public static function get_x_fp_hash($x_login, $x_fp_sequence, $x_fp_timestamp, $x_amount, $x_currency_code, $secret)
     {
-        $string = $LMI_MERCHANT_ID . ";" . $LMI_PAYMENT_NO . ";" . $LMI_SYS_PAYMENT_ID . ";" . $LMI_SYS_PAYMENT_DATE . ";" . $LMI_PAYMENT_AMOUNT . ";" . $LMI_CURRENCY . ";" . $LMI_PAID_AMOUNT . ";" . $LMI_PAID_CURRENCY . ";" . $LMI_PAYMENT_SYSTEM . ";" . $LMI_SIM_MODE . ";" . $SECRET;
-        $hash = base64_encode(hash($hash_method, $string, true));
-        return $hash;
+        $arr = array($x_login, $x_fp_sequence, $x_fp_timestamp, $x_amount, $x_currency_code);
+        $str = implode('^', $arr);
+        return hash_hmac('md5', $str, $secret);
     }
-
-
+    
     /**
-     * Get sign
-     * @param $merchant_id
-     * @param $order_id
-     * @param $amount
-     * @param $lmi_currency
-     * @param $secret_key
-     * @param string $sign_method
+     * Return sign with MD5 algoritm
+     * @param $x_login
+     * @param $x_trans_id
+     * @param $x_amount
+     * @param $secret
      * @return string
      */
-    public static function getSign($merchant_id, $order_id, $amount, $lmi_currency, $secret_key, $hash_method = 'md5')
+    public static function get_x_MD5_Hash($x_login, $x_trans_id, $x_amount, $secret)
     {
-        $plain_sign = $merchant_id . $order_id . $amount . $lmi_currency . $secret_key;
-        $sign = base64_encode(hash($hash_method, $plain_sign, true));
-        return $sign;
+        return md5($secret . $x_login . $x_trans_id . $x_amount);
     }
-
+    
+    
     /**
      * Get post or get method
      * @param null $param
