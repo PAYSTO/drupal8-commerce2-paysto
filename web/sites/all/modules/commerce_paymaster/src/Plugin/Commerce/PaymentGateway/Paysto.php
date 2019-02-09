@@ -27,7 +27,6 @@ use Drupal\Core\Messenger\MessengerInterface;
  */
 class Paysto extends OffsitePaymentGatewayBase
 {
-
     /**
      * {@inheritdoc}
      */
@@ -35,7 +34,7 @@ class Paysto extends OffsitePaymentGatewayBase
     {
 
         $returned = [
-                'merchant_id' => '',
+                'x_login' => '',
                 'secret' => '',
                 'vat_shipping' => '',
                 'use_ip_only_from_server_list' => true,
@@ -61,11 +60,11 @@ class Paysto extends OffsitePaymentGatewayBase
     {
         $form = parent::buildConfigurationForm($form, $form_state);
 
-        $form['merchant_id'] = [
+        $form['x_login'] = [
             '#type' => 'textfield',
             '#title' => $this->t("Merchant ID"),
             '#description' => $this->t("Visit merchant interface in Paysto site and copy data from 'Store code' field"),
-            '#default_value' => $this->configuration['merchant_id'],
+            '#default_value' => $this->configuration['x_login'],
             '#required' => TRUE,
         ];
 
@@ -152,7 +151,7 @@ class Paysto extends OffsitePaymentGatewayBase
         parent::submitConfigurationForm($form, $form_state);
         if (!$form_state->getErrors()) {
             $values = $form_state->getValue($form['#parents']);
-            $this->configuration['merchant_id'] = $values['merchant_id'];
+            $this->configuration['x_login'] = $values['x_login'];
             $this->configuration['secret'] = $values['secret'];
             $this->configuration['description'] = $values['description'];
             foreach ($this->getProductTypes() as $type) {
@@ -173,72 +172,50 @@ class Paysto extends OffsitePaymentGatewayBase
     public function onNotify(Request $request)
     {
 
+        $x_login = $this->configuration['x_login'];
+        $secret = $this->configuration['secret'];
+
         // try to get values from request
-        $LMI_MERCHANT_ID = self::getRequest('LMI_MERCHANT_ID');
-        $LMI_PAYMENT_NO = self::getRequest('LMI_PAYMENT_NO');
-        $LMI_SYS_PAYMENT_ID = self::getRequest('LMI_SYS_PAYMENT_ID');
-        $LMI_SYS_PAYMENT_DATE = self::getRequest('LMI_SYS_PAYMENT_DATE');
-        $LMI_PAYMENT_AMOUNT = self::getRequest('LMI_PAYMENT_AMOUNT');
-        $LMI_CURRENCY = self::getRequest('LMI_CURRENCY');
-        $LMI_PAID_AMOUNT = self::getRequest('LMI_PAID_AMOUNT');
-        $LMI_PAID_CURRENCY = self::getRequest('LMI_PAID_CURRENCY');
-        $LMI_PAYMENT_SYSTEM = self::getRequest('LMI_PAYMENT_SYSTEM');
-        $LMI_SIM_MODE = self::getRequest('LMI_SIM_MODE');
-        $SECRET = $this->configuration['secret'];
-        $hash_method = $this->configuration['hash_method'];
+        $orderId = self::getRequest('x_invoice_num');
+        $order = Order::load($orderId);
+        $orderTotal = self::getOrderTotalAmount($order->getTotalPrice());
+        $x_response_code = self::getRequest('x_response_code');
+        $x_trans_id = self::getRequest('x_trans_id');
+        $x_MD5_Hash = self::getRequest('x_MD5_Hash');
 
-        // get hash and sign from request
-        $LMI_HASH = self::getRequest('LMI_HASH');
-        $LMI_SIGN = self::getRequest('SIGN');
+        $calculated_x_MD5_Hash = self::get_x_MD5_Hash($x_login, $x_trans_id, $orderTotal, $secret);
 
-        // gert order
-        if (!$LMI_PAYMENT_NO)
-            die('Order load fail!');
-        $order = Order::load($LMI_PAYMENT_NO);
-        $order_total = self::getOrderTotalAmount($order->getTotalPrice());
-        $order_currency = self::getOrderCurrencyCode($order->getTotalPrice());
+        $paymentStorage = $this->entityTypeManager->getStorage('commerce_payment');
 
-
-        // Check callback for pre-request
-        if (self::getRequest("LMI_PREREQUEST")) {
-            if (($LMI_MERCHANT_ID == $this->configuration['merchant_id']) &&
-                ($LMI_PAYMENT_AMOUNT == $order_total) && ($LMI_PAID_CURRENCY == $order_currency)) {
-                echo 'YES';
-                exit;
-            } else {
-                echo 'FAIL';
-                exit;
+        if ($paymentStorage->state != 'complete') {
+            if (checkInServerList()) {
+                if ($x_response_code == 1 && $calculated_x_MD5_Hash == $x_MD5_Hash) {
+                    $payment = $paymentStorage->create([
+                        'state' => 'complete',
+                        'amount' => $order->getTotalPrice(),
+                        'payment_gateway' => $this->entityId,
+                        'order_id' => $orderId,
+                        'remote_id' => $x_trans_id,
+                        'remote_state' => 'complete'
+                    ]);
+                    $payment->save();
+                } else {
+                    MessengerInterface::addMessage($this->t('Invalid Transaction. Please try again'), 'error');
+                    return $this->onCancel($order, $request);
+                }
             }
+            else {
+                MessengerInterface::addMessage($this->t('Invalid Transaction. Please try again'), 'error');
+                return $this->onCancel($order, $request);
+            }
+
         }
-
-        // get hash and sign
-        $hash = self::getHash($LMI_MERCHANT_ID, $LMI_PAYMENT_NO, $LMI_SYS_PAYMENT_ID, $LMI_SYS_PAYMENT_DATE,
-            $LMI_PAYMENT_AMOUNT, $LMI_CURRENCY, $LMI_PAID_AMOUNT, $LMI_PAID_CURRENCY, $LMI_PAYMENT_SYSTEM,
-            $LMI_SIM_MODE, $SECRET, $hash_method);
-
-        $sign = self::getSign($LMI_MERCHANT_ID, $LMI_PAYMENT_NO, $LMI_PAYMENT_AMOUNT, $LMI_CURRENCY,
-            $SECRET, $hash_method);
-
-        // check for right hash and sign
-        if ($hash === $LMI_HASH && $sign === $LMI_SIGN) {
-            $payment_storage = $this->entityTypeManager->getStorage('commerce_payment');
-            $payment = $payment_storage->create([
-                'state' => 'complete',
-                'amount' => $order->getTotalPrice(),
-                'payment_gateway' => $this->entityId,
-                'order_id' => $LMI_PAYMENT_NO,
-                'remote_id' => $LMI_SYS_PAYMENT_ID,
-                'remote_state' => 'complete'
-            ]);
-            $payment->save();
-
-        } else {
-            MessengerInterface::addMessage($this->t('Invalid Transaction. Please try again'), 'error');
-            return $this->onCancel($order, $request);
+        else {
+            MessengerInterface::addMessage($this->t('Order complete! Thank you for payment'), 'success');
+            return;
         }
 
     }
-
 
     /**
      * Callback function
@@ -247,24 +224,13 @@ class Paysto extends OffsitePaymentGatewayBase
     public function onReturn(OrderInterface $order, Request $request)
     {
         // Get order_id in callback
-        $order_id = $request->query->get('LMI_PAYMENT_NO');
+        $order_id = $request->query->get('x_invoice_num');
         $order = Order::load($order_id);
         $order_total = number_format($order->getTotalPrice()->getNumber(), 2, '.', '');
-
-        print($order_total);
-
-        // Check callback for prerequest
-        if ($request->query->get("LMI_PREREQUEST")) {
-            if (($request->query->get("LMI_MERCHANT_ID") == $this->configuration['merchant_id']) && ($request->query->get("LMI_PAYMENT_AMOUNT") == $order_total)) {
-                echo 'YES';
-                exit;
-            } else {
-                echo 'FAIL';
-                exit;
-            }
-        }
+        MessengerInterface::addMessage($this->t('Order complete! Thank you for payment'), 'success');
+        return;
     }
-    
+
     /**
      * Return hash md5 HMAC
      * @param $x_login
@@ -281,7 +247,7 @@ class Paysto extends OffsitePaymentGatewayBase
         $str = implode('^', $arr);
         return hash_hmac('md5', $str, $secret);
     }
-    
+
     /**
      * Return sign with MD5 algoritm
      * @param $x_login
@@ -294,8 +260,8 @@ class Paysto extends OffsitePaymentGatewayBase
     {
         return md5($secret . $x_login . $x_trans_id . $x_amount);
     }
-    
-    
+
+
     /**
      * Get post or get method
      * @param null $param
@@ -314,7 +280,6 @@ class Paysto extends OffsitePaymentGatewayBase
         }
     }
 
-
     /**
      * Get order amount
      * @param \Drupal\commerce_price\Price $price
@@ -324,7 +289,6 @@ class Paysto extends OffsitePaymentGatewayBase
     {
         return number_format($price->getNumber(), 2, '.', '');
     }
-
 
     /**
      * Get order currency
@@ -336,9 +300,10 @@ class Paysto extends OffsitePaymentGatewayBase
         return $price->getCurrencyCode();
     }
 
-
     /**
-     * {@inheritdoc}
+     * Cancel order proceed
+     * @param OrderInterface $order
+     * @param Request $request
      */
     public function onCancel(OrderInterface $order, Request $request)
     {
@@ -358,7 +323,6 @@ class Paysto extends OffsitePaymentGatewayBase
         return array_keys($product_types);
     }
 
-
     /**
      * Get order product items
      * @param $order
@@ -372,21 +336,44 @@ class Paysto extends OffsitePaymentGatewayBase
         foreach ($order->getItems() as $key => $item) {
             $type = $item->getPurchasedEntity()->getProduct()->get('type')->getString();
             $name = $item->getTitle();
+            $productId = $item->getProductId();
             $price = number_format($item->getUnitPrice()->getNumber(), 2, '.', '');
             $qty = number_format($item->getQuantity(), 0, '.', '');
             if (!($vat = $config['vat_product_' . $type])) {
                 $vat = 'no_vat';
             }
             $itemsArray[] = [
-                'NAME' => $name,
+                // todo must to check it
+                'POS' => self::pos,
+                'SKU' => $productId,
+                'NAME' => substr($name, 0, 100),
                 'QTY' => $qty,
                 'PRICE' => $price,
                 'TAX' => $vat,
             ];
+
         }
         return $itemsArray;
     }
 
+    /**
+     * Check if IP adress in server lists
+     * @return bool
+     */
+    public function checkInServerList()
+    {
+        if (use_ip_only_from_server_list()) {
+            $clientIp = \Drupal::request()->getClientIp();
+            $serverIpList = preg_split('/\r\n|[\r\n]/', $this->configuration['server_list']);
+            if (in_array($clientIp, $serverIpList)) {
+                return true;
+            } else {
+                return false;
+            }
+        } else {
+            return true;
+        }
+    }
 
     /**
      * Get order Adjastment (Shipping, fee and etc.)
@@ -400,14 +387,16 @@ class Paysto extends OffsitePaymentGatewayBase
         foreach ($order->getAdjustments() as $adjustment) {
             if ($adjustment->getType() == 'shipping') {
                 $itemsArray[] = [
-                    'NAME' => $adjustment->getLabel(),
+                    'SKU' => 'shipping',
+                    'NAME' => substr($adjustment->getLabel(), 0, 100),
                     'QTY' => 1,
                     'PRICE' => number_format($adjustment->getAmount()->getNumber(), 2, '.', ''),
                     'TAX' => $config['vat_shipping'],
                 ];
             } else {
                 $itemsArray[] = [
-                    'NAME' => $adjustment->getLabel(),
+                    'SKU' => $adjustment->getType(),
+                    'NAME' => substr($adjustment->getLabel(), 0, 100),
                     'QTY' => 1,
                     'PRICE' => number_format($adjustment->getAmount()->getNumber(), 2, '.', ''),
                     'TAX' => 'no_vat',
