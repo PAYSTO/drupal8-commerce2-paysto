@@ -22,6 +22,7 @@ class PaystoForm extends BasePaymentOffsiteForm
      */
     public function buildConfigurationForm(array $form, FormStateInterface $form_state)
     {
+        $data = [];
         $form = parent::buildConfigurationForm($form, $form_state);
 
         // Get now for sign
@@ -49,9 +50,10 @@ class PaystoForm extends BasePaymentOffsiteForm
             'x_relay_url' => $this->getNotifyUrl(),
         ];
 
+        $customerEmail = $order->getEmail();
         // if isset email
-        if (isset($order->mail)) {
-            $data['x_email'] = $order->mail;
+        if ($customerEmail) {
+            $data['x_email'] = $customerEmail;
         }
 
         // Get item data
@@ -71,6 +73,8 @@ class PaystoForm extends BasePaymentOffsiteForm
         }
 
         $data['x_line_item'] = $x_line_item;
+
+
 
         return $this->buildRedirectForm($form, $form_state, $this->payment_url, $data, 'post');
     }
