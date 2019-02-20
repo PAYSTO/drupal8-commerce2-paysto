@@ -343,7 +343,7 @@ class Paysto extends OffsitePaymentGatewayBase
             }
             $itemsArray[] = [
                 // todo must to check it
-                'POS' => self::pos,
+                'POS' => $key,
                 'SKU' => $productId,
                 'NAME' => substr($name, 0, 100),
                 'QTY' => $qty,
@@ -352,6 +352,9 @@ class Paysto extends OffsitePaymentGatewayBase
             ];
 
         }
+        
+        
+        
         return $itemsArray;
     }
 

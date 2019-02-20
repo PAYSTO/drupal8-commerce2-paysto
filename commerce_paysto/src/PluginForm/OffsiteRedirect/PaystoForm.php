@@ -55,7 +55,12 @@ class PaystoForm extends BasePaymentOffsiteForm
         if ($customerEmail) {
             $data['x_email'] = $customerEmail;
         }
-
+//
+//        print "<pre>";
+//        var_dump($order->getItems());
+//        die;
+//        print "</pre>";
+        
         // Get item data
         $items = array_merge(PM::getOrderItems($order, $configs), PM::getOrderAdjustments($order, $configs));
         //add products
