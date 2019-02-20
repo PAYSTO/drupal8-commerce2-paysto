@@ -120,12 +120,11 @@ class Paysto extends OffsitePaymentGatewayBase
             '#required' => true,
         ];
 
-
         $form['server_list'] = [
-            '#type' => 'select',
+            '#type' => 'textarea',
             '#title' => $this->t("Acceptable server list"),
             '#description' => $this->t("Input new server IP in each new string"),
-            '#default_value' => $this->configuration['vat_shipping'],
+            '#default_value' => $this->configuration['server_list'],
         ];
 
         return $form;
