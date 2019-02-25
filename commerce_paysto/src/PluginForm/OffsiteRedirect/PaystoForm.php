@@ -35,16 +35,18 @@ class PaystoForm extends BasePaymentOffsiteForm
 
         $order = $payment->getOrder();
         $total_price = $order->getTotalPrice();
+        $total_price_number = ($total_price->getNumber()) ?
+                number_format($total_price->getNumber(), 2, '.', '') : 0.00;
 
         $data = [
             'x_description' => $configs['description'] . $payment->getOrderId(),
             'x_login' => $configs['x_login'],
-            'x_amount' => $total_price ? $total_price->getNumber() : '0.00',
+            'x_amount' => $total_price_number,
             'x_currency_code' => $total_price->getCurrencyCode(),
             'x_fp_sequence' => $payment->getOrderId(),
             'x_fp_timestamp' => $now,
-            'x_fp_hash' => PM::get_x_fp_hash($configs['x_login'],  $payment->getOrderId(), $now,
-                $total_price ? $total_price->getNumber() : '0.00', $total_price->getCurrencyCode(), $configs['secret']),
+            'x_fp_hash' => PM::get_x_fp_hash($configs['x_login'],  $payment->getOrderId(), $now,$total_price_number,
+                $total_price->getCurrencyCode(), $configs['secret']),
             'x_invoice_num' => $payment->getOrderId(),
             'x_relay_response' => "TRUE",
             'x_relay_url' => $this->getNotifyUrl(),
@@ -55,27 +57,8 @@ class PaystoForm extends BasePaymentOffsiteForm
         if ($customerEmail) {
             $data['x_email'] = $customerEmail;
         }
-//
-//        print "<pre>";
-//        var_dump($order->getItems());
-//        die;
-//        print "</pre>";
-        
-        // Get item data
-        $items = array_merge(PM::getOrderItems($order, $configs), PM::getOrderAdjustments($order, $configs));
-        //add products
-        $pos = 1;
-        $x_line_item = '';
-        foreach ($items as $key => $item) {
-            $lineArr[] = '№' . $pos . "  ";
-            $lineArr[] = $item['SKU'];
-            $lineArr[] = $item['NAME'];
-            $lineArr[] = $item['QTY'];
-            $lineArr[] = $item['PRICE'];
-            $lineArr[] = $item['TAX'];
-            $x_line_item .= implode('<|>', $lineArr) . "0<|>\n";
-            $pos++;
-        }
+
+        $x_line_item = PM::getFormattedOrderItems($order, $configs);
 
         $data['x_line_item'] = $x_line_item;
 
@@ -89,7 +72,7 @@ class PaystoForm extends BasePaymentOffsiteForm
      */
     public function getNotifyUrl()
     {
-        $url = \Drupal::request()->getSchemeAndHttpHost().'/payment/notify/paysto';
+        $url = \Drupal::request()->getSchemeAndHttpHost().'/payment/notify/';
         return $url;
     }
 
