@@ -170,7 +170,7 @@ class Paysto extends OffsitePaymentGatewayBase
      */
     public function onNotify(Request $request)
     {
-
+//        var_dump($this->entityId);die;
         $x_login = $this->configuration['x_login'];
         $secret = $this->configuration['secret'];
 
@@ -311,7 +311,6 @@ class Paysto extends OffsitePaymentGatewayBase
         ]));
     }
 
-
     /**
      * Get all product types
      * @return array
@@ -331,31 +330,78 @@ class Paysto extends OffsitePaymentGatewayBase
     public static function getOrderItems($order, $config)
     {
         $itemsArray = [];
-
         foreach ($order->getItems() as $key => $item) {
-            $type = $item->getPurchasedEntity()->getProduct()->get('type')->getString();
             $name = $item->getTitle();
-            $productId = $item->getProductId();
+            $product = $item->getPurchasedEntity();
+            $sku = $product->getSku();
+            $type = $product->getProduct()->get('type')->getString();
             $price = number_format($item->getUnitPrice()->getNumber(), 2, '.', '');
             $qty = number_format($item->getQuantity(), 0, '.', '');
             if (!($vat = $config['vat_product_' . $type])) {
                 $vat = 'no_vat';
             }
             $itemsArray[] = [
-                // todo must to check it
-                'POS' => $key,
-                'SKU' => $productId,
-                'NAME' => substr($name, 0, 100),
-                'QTY' => $qty,
-                'PRICE' => $price,
-                'TAX' => $vat,
+                'sku' => $sku,
+                'name' => substr($name, 0, 100),
+                'qty' => $qty,
+                'price' => $price,
+                'tax' => $vat,
             ];
-
         }
-        
-        
-        
         return $itemsArray;
+    }
+    
+    /**
+     * Get order Adjastment (Shipping, fee and etc.)
+     * @param $order
+     * @param $config array
+     * @return array
+     */
+    public static function getOrderAdjustments($order, $config)
+    {
+        $itemsArray = [];
+        foreach ($order->getAdjustments() as $adjustment) {
+            if ($adjustment->getType() == 'shipping') {
+                $itemsArray[] = [
+                    'sku' => 'shipping',
+                    'name' => substr($adjustment->getLabel(), 0, 100),
+                    'qty' => 1,
+                    'price' => number_format($adjustment->getAmount()->getNumber(), 2, '.', ''),
+                    'tax' => $config['vat_shipping'],
+                ];
+            } else {
+                $itemsArray[] = [
+                    'sku' => $adjustment->getType(),
+                    'name' => substr($adjustment->getLabel(), 0, 100),
+                    'qty' => 1,
+                    'price' => number_format($adjustment->getAmount()->getNumber(), 2, '.', ''),
+                    'tax' => 'no_vat',
+                ];
+            }
+        }
+        return $itemsArray;
+    }
+    
+    /**
+     * Get formatted order items
+     * @param $order
+     * @param $configs
+     */
+    public static function getFormattedOrderItems($order, $configs) {
+        $items = array_merge(self::getOrderItems($order, $configs), self::getOrderAdjustments($order, $configs));
+        $returned = '';
+        foreach ($items as $key => $item) {
+            $lineArr = array();
+            $pos = $key+1;
+            $lineArr[] = '#'. $pos . " ";
+            $lineArr[] = substr($item['sku'], 0, 30);
+            $lineArr[] = substr($item['name'], 0, 250);
+            $lineArr[] = $item['qty'];
+            $lineArr[] = $item['price'];
+            $lineArr[] = $item['tax'];
+            $returned .= implode('<|>', $lineArr) . "0<|>\n";
+        }
+        return $returned;
     }
 
     /**
@@ -376,37 +422,4 @@ class Paysto extends OffsitePaymentGatewayBase
             return true;
         }
     }
-
-    /**
-     * Get order Adjastment (Shipping, fee and etc.)
-     * @param $order
-     * @param $config array
-     * @return array
-     */
-    public static function getOrderAdjustments($order, $config)
-    {
-        $itemsArray = [];
-        foreach ($order->getAdjustments() as $adjustment) {
-            if ($adjustment->getType() == 'shipping') {
-                $itemsArray[] = [
-                    'SKU' => 'shipping',
-                    'NAME' => substr($adjustment->getLabel(), 0, 100),
-                    'QTY' => 1,
-                    'PRICE' => number_format($adjustment->getAmount()->getNumber(), 2, '.', ''),
-                    'TAX' => $config['vat_shipping'],
-                ];
-            } else {
-                $itemsArray[] = [
-                    'SKU' => $adjustment->getType(),
-                    'NAME' => substr($adjustment->getLabel(), 0, 100),
-                    'QTY' => 1,
-                    'PRICE' => number_format($adjustment->getAmount()->getNumber(), 2, '.', ''),
-                    'TAX' => 'no_vat',
-                ];
-            }
-        }
-        return $itemsArray;
-    }
-
-
 }
