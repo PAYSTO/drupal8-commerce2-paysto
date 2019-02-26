@@ -2,3 +2,12 @@
 .idea
 commerce_authnet
 commerce_braintree
+address
+commerce
+commerce_shipping
+entity
+entity_reference_revisions
+inline_entity_form
+physical
+profile
+state_machine

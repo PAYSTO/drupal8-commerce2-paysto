@@ -8,22 +8,12 @@ use Drupal\Core\Form\FormStateInterface;
 use Symfony\Component\HttpFoundation\Request;
 use Drupal\commerce_order\Entity\Order;
 use Drupal\Core\Messenger\MessengerInterface;
+use Symfony\Component\HttpFoundation\RedirectResponse;
 
 /**
- * Provides the Paysto payment gateway.
+ * Class Paysto
  *
- * @CommercePaymentGateway(
- *   id = "paysto",
- *   label = @Translation("Paysto"),
- *   display_label = @Translation("Paysto"),
- *   forms = {
- *     "offsite-payment" = "Drupal\commerce_paysto\PluginForm\OffsiteRedirect\PaystoForm",
- *   },
- *   payment_method_types = {"credit_card"},
- *   credit_card_types = {
- *     "maestro", "mastercard", "visa", "mir",
- *   },
- * )
+ * @package Drupal\commerce_paysto\Plugin\Commerce\PaymentGateway
  */
 class Paysto extends OffsitePaymentGatewayBase
 {
@@ -32,7 +22,7 @@ class Paysto extends OffsitePaymentGatewayBase
      */
     public function defaultConfiguration()
     {
-
+        
         $returned = [
                 'x_login' => '',
                 'secret' => '',
@@ -44,14 +34,14 @@ class Paysto extends OffsitePaymentGatewayBase
 95.213.209.221
 95.213.209.222'
             ] + parent::defaultConfiguration();
-
+        
         foreach ($this->getProductTypes() as $type) {
             $returned['vat_product_' . $type] = '';
         }
-
+        
         return $returned;
     }
-
+    
     /**
      * Setup configuration
      * {@inheritdoc}
@@ -59,57 +49,57 @@ class Paysto extends OffsitePaymentGatewayBase
     public function buildConfigurationForm(array $form, FormStateInterface $form_state)
     {
         $form = parent::buildConfigurationForm($form, $form_state);
-
+        
         $form['x_login'] = [
             '#type' => 'textfield',
             '#title' => $this->t("Merchant ID"),
             '#description' => $this->t("Visit merchant interface in Paysto site and copy data from 'Store code' field"),
             '#default_value' => $this->configuration['x_login'],
-            '#required' => TRUE,
+            '#required' => true,
         ];
-
+        
         $form['secret'] = [
             '#type' => 'textfield',
             '#title' => $this->t("Secret word"),
             '#description' => $this->t("Visit merchant interface in Paysto site set and copy data from 'Secret word' field"),
             '#default_value' => $this->configuration['secret'],
-            '#required' => TRUE,
+            '#required' => true,
         ];
-
+        
         $form['description'] = [
             '#type' => 'textfield',
             '#title' => $this->t("Order description"),
             '#description' => $this->t("Order description in Paysto interface"),
             '#default_value' => $this->configuration['description'],
-            '#required' => TRUE,
+            '#required' => true,
         ];
-
+        
         foreach ($this->getProductTypes() as $type) {
             $form['vat_product_' . $type] = [
                 '#type' => 'select',
                 '#title' => $this->t("Vat rate for product type " . $type),
                 '#description' => $this->t("Set vat rate for product " . $type),
-                '#options' => array(
+                '#options' => [
                     'Y' => $this->t('With VAT'),
                     'N' => $this->t('WIthout VAT'),
-                ),
+                ],
                 '#default_value' => $this->configuration['vat_product_' . $type],
-                '#required' => TRUE,
+                '#required' => true,
             ];
         }
-
+        
         $form['vat_shipping'] = [
             '#type' => 'select',
             '#title' => $this->t("Vat rate for shipping"),
             '#description' => $this->t("Set vat rate for shipping"),
-            '#options' => array(
+            '#options' => [
                 'Y' => $this->t('With VAT'),
                 'N' => $this->t('WIthout VAT'),
-            ),
+            ],
             '#default_value' => $this->configuration['vat_shipping'],
-            '#required' => TRUE,
+            '#required' => true,
         ];
-
+        
         $form['use_ip_only_from_server_list'] = [
             '#type' => 'checkbox',
             '#title' => $this->t("Use server IP"),
@@ -119,17 +109,17 @@ class Paysto extends OffsitePaymentGatewayBase
             '#default_value' => $this->configuration['use_ip_only_from_server_list'],
             '#required' => true,
         ];
-
+        
         $form['server_list'] = [
             '#type' => 'textarea',
             '#title' => $this->t("Acceptable server list"),
             '#description' => $this->t("Input new server IP in each new string"),
             '#default_value' => $this->configuration['server_list'],
         ];
-
+        
         return $form;
     }
-
+    
     /**
      * Validation of form
      * {@inheritdoc}
@@ -138,7 +128,7 @@ class Paysto extends OffsitePaymentGatewayBase
     {
         $values = $form_state->getValue($form['#parents']);
     }
-
+    
     /**
      * Form submit
      * {@inheritdoc}
@@ -156,13 +146,13 @@ class Paysto extends OffsitePaymentGatewayBase
             foreach ($this->getProductTypes() as $type) {
                 $this->configuration['vat_product_' . $type] = $values['vat_product_' . $type];
             }
-
+            
             $this->configuration['vat_shipping'] = $values['vat_shipping'];
             $this->configuration['use_ip_only_from_server_list'] = $values['use_ip_only_from_server_list'];
             $this->configuration['server_list'] = $values['server_list'];
         }
     }
-
+    
     /**
      * Notity payment callback
      * @param Request $request
@@ -170,24 +160,36 @@ class Paysto extends OffsitePaymentGatewayBase
      */
     public function onNotify(Request $request)
     {
-//        var_dump($this->entityId);die;
+        
         $x_login = $this->configuration['x_login'];
         $secret = $this->configuration['secret'];
-
         // try to get values from request
         $orderId = self::getRequest('x_invoice_num');
+        
+        if (!isset($orderId)) {
+            \Drupal::messenger()->addMessage($this->t('Site can not get info from you transaction. Please return to store and perform the order'),
+                'success');
+            $response = new RedirectResponse('/', 302);
+            $response->send();
+            return;
+        }
+        
         $order = Order::load($orderId);
-        $orderTotal = self::getOrderTotalAmount($order->getTotalPrice());
+        
+        $total_price = $order->getTotalPrice();
+        $orderTotal = ($total_price->getNumber()) ?
+            number_format($total_price->getNumber(), 2, '.', '') : 0.00;
+        
         $x_response_code = self::getRequest('x_response_code');
         $x_trans_id = self::getRequest('x_trans_id');
         $x_MD5_Hash = self::getRequest('x_MD5_Hash');
-
         $calculated_x_MD5_Hash = self::get_x_MD5_Hash($x_login, $x_trans_id, $orderTotal, $secret);
-
+        $paymentStorage = \Drupal::entityTypeManager()->getStorage('commerce_payment')->loadByProperties([ 'order_id' => [$orderId]]);
+        $payment = end($paymentStorage);
         $paymentStorage = $this->entityTypeManager->getStorage('commerce_payment');
-
-        if ($paymentStorage->state != 'complete') {
-            if (checkInServerList()) {
+        
+        if ($payment->state->value != 'complete') {
+            if ($this->checkInServerList()) {
                 if ($x_response_code == 1 && $calculated_x_MD5_Hash == $x_MD5_Hash) {
                     $payment = $paymentStorage->create([
                         'state' => 'complete',
@@ -195,41 +197,30 @@ class Paysto extends OffsitePaymentGatewayBase
                         'payment_gateway' => $this->entityId,
                         'order_id' => $orderId,
                         'remote_id' => $x_trans_id,
-                        'remote_state' => 'complete'
+                        'remote_state' => 'complete',
+                        'state' => 'complete',
                     ]);
                     $payment->save();
+                    // Change order statuses to remove from busket
+                    $order->set('state', 'validation');
+                    $order->save();
                 } else {
-                    MessengerInterface::addMessage($this->t('Invalid Transaction. Please try again'), 'error');
-                    return $this->onCancel($order, $request);
+                    $this->onCancel($order, $request);
+                    return;
                 }
+            } else {
+                $this->onCancel($order, $request);
+                return;
             }
-            else {
-                MessengerInterface::addMessage($this->t('Invalid Transaction. Please try again'), 'error');
-                return $this->onCancel($order, $request);
-            }
-
-        }
-        else {
-            MessengerInterface::addMessage($this->t('Order complete! Thank you for payment'), 'success');
+            
+        } else {
+            \Drupal::messenger()->addMessage($this->t('Order complete! Thank you for payment'), 'success');
+            $this->onReturn($order, $request);
             return;
         }
-
+        
     }
-
-    /**
-     * Callback function
-     * {@inheritdoc}
-     */
-    public function onReturn(OrderInterface $order, Request $request)
-    {
-        // Get order_id in callback
-        $order_id = $request->query->get('x_invoice_num');
-        $order = Order::load($order_id);
-        $order_total = number_format($order->getTotalPrice()->getNumber(), 2, '.', '');
-        MessengerInterface::addMessage($this->t('Order complete! Thank you for payment'), 'success');
-        return;
-    }
-
+    
     /**
      * Return hash md5 HMAC
      * @param $x_login
@@ -240,13 +231,19 @@ class Paysto extends OffsitePaymentGatewayBase
      * @param $secret
      * @return string
      */
-    public static function get_x_fp_hash($x_login, $x_fp_sequence, $x_fp_timestamp, $x_amount, $x_currency_code, $secret)
-    {
-        $arr = array($x_login, $x_fp_sequence, $x_fp_timestamp, $x_amount, $x_currency_code);
+    public static function get_x_fp_hash(
+        $x_login,
+        $x_fp_sequence,
+        $x_fp_timestamp,
+        $x_amount,
+        $x_currency_code,
+        $secret
+    ) {
+        $arr = [$x_login, $x_fp_sequence, $x_fp_timestamp, $x_amount, $x_currency_code];
         $str = implode('^', $arr);
         return hash_hmac('md5', $str, $secret);
     }
-
+    
     /**
      * Return sign with MD5 algoritm
      * @param $x_login
@@ -259,26 +256,29 @@ class Paysto extends OffsitePaymentGatewayBase
     {
         return md5($secret . $x_login . $x_trans_id . $x_amount);
     }
-
-
+    
     /**
      * Get post or get method
      * @param null $param
      */
     public static function getRequest($param = null)
     {
-        $post = \Drupal::request()->request->get($param);
-        $get = \Drupal::request()->query->get($param);
-        if ($post) {
-            return $post;
-        }
-        if ($get) {
-            return $get;
-        } else {
+        try {
+            $post = \Drupal::request()->request->get($param);
+            $get = \Drupal::request()->query->get($param);
+            if ($post) {
+                return $post;
+            }
+            if ($get) {
+                return $get;
+            } else {
+                return null;
+            }
+        } catch (\Exception $exception) {
             return null;
         }
     }
-
+    
     /**
      * Get order amount
      * @param \Drupal\commerce_price\Price $price
@@ -288,7 +288,7 @@ class Paysto extends OffsitePaymentGatewayBase
     {
         return number_format($price->getNumber(), 2, '.', '');
     }
-
+    
     /**
      * Get order currency
      * @param \Drupal\commerce_price\Price $price
@@ -298,19 +298,50 @@ class Paysto extends OffsitePaymentGatewayBase
     {
         return $price->getCurrencyCode();
     }
-
+    
     /**
-     * Cancel order proceed
+     * Callback order success proceed
+     * {@inheritdoc}
+     */
+    public function onReturn(OrderInterface $order, Request $request)
+    {
+        \Drupal::messenger()->addMessage($this->t('Order complete! Thank you for payment'), 'success');
+        $orderId = self::getRequest('x_invoice_num');
+        if ($user = \Drupal::currentUser()) {
+            if ($userId = $user->id()) {
+                $url = '/user/'.$userId.'/orders';
+            } else {
+                if (isset($orderId)) {
+                    $url = '/checkout/' . $orderId . '/review';
+                } else {
+                    $url = '/';
+                }
+            }
+        } else {
+            $url = '/';
+        }
+        $response = new RedirectResponse($url, 302);
+        $response->send();
+        return;
+    }
+    
+    /**
+     * Callback order fail proceed
      * @param OrderInterface $order
      * @param Request $request
      */
     public function onCancel(OrderInterface $order, Request $request)
     {
-        MessengerInterface::addMessage($this->t('You have canceled checkout at @gateway but may resume the checkout process here when you are ready.', [
-            '@gateway' => $this->getDisplayLabel(),
-        ]));
+        \Drupal::messenger()->addMessage($this->t('You have canceled checkout at @gateway but may resume the checkout process here when you are ready.',
+            [
+                '@gateway' => $this->getDisplayLabel(),
+            ]), 'error');
+        $orderId = self::getRequest('x_invoice_num');
+        $url = '/checkout/' . $orderId . '/review';
+        $response = new RedirectResponse($url, 302);
+        $response->send();
     }
-
+    
     /**
      * Get all product types
      * @return array
@@ -320,7 +351,7 @@ class Paysto extends OffsitePaymentGatewayBase
         $product_types = \Drupal\commerce_product\Entity\ProductType::loadMultiple();
         return array_keys($product_types);
     }
-
+    
     /**
      * Get order product items
      * @param $order
@@ -387,13 +418,14 @@ class Paysto extends OffsitePaymentGatewayBase
      * @param $order
      * @param $configs
      */
-    public static function getFormattedOrderItems($order, $configs) {
+    public static function getFormattedOrderItems($order, $configs)
+    {
         $items = array_merge(self::getOrderItems($order, $configs), self::getOrderAdjustments($order, $configs));
         $returned = '';
         foreach ($items as $key => $item) {
-            $lineArr = array();
-            $pos = $key+1;
-            $lineArr[] = '#'. $pos . " ";
+            $lineArr = [];
+            $pos = $key + 1;
+            $lineArr[] = '#' . $pos . " ";
             $lineArr[] = substr($item['sku'], 0, 30);
             $lineArr[] = substr($item['name'], 0, 250);
             $lineArr[] = $item['qty'];
@@ -403,14 +435,14 @@ class Paysto extends OffsitePaymentGatewayBase
         }
         return $returned;
     }
-
+    
     /**
      * Check if IP adress in server lists
      * @return bool
      */
     public function checkInServerList()
     {
-        if (use_ip_only_from_server_list()) {
+        if ($this->configuration['use_ip_only_from_server_list']) {
             $clientIp = \Drupal::request()->getClientIp();
             $serverIpList = preg_split('/\r\n|[\r\n]/', $this->configuration['server_list']);
             if (in_array($clientIp, $serverIpList)) {
