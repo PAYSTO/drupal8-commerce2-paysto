@@ -18,11 +18,14 @@ class PaystoForm extends BasePaymentOffsiteForm
     public $payment_url = 'https://paysto.com/ru/pay/AuthorizeNet';
 
     /**
-     * {@inheritdoc}
+     * Return form for checkout
+     * @param array $form
+     * @param FormStateInterface $form_state
+     * @return mixed
      */
     public function buildConfigurationForm(array $form, FormStateInterface $form_state)
     {
-        $data = [];
+
         $form = parent::buildConfigurationForm($form, $form_state);
 
         // Get now for sign
@@ -34,6 +37,7 @@ class PaystoForm extends BasePaymentOffsiteForm
         $configs = $payment_gateway_plugin->getConfiguration();
 
         $order = $payment->getOrder();
+        $paymentMachineName = $order->get('payment_gateway')->first()->entity->getOriginalId();
         $total_price = $order->getTotalPrice();
         $total_price_number = ($total_price->getNumber()) ?
                 number_format($total_price->getNumber(), 2, '.', '') : 0.00;
@@ -49,10 +53,11 @@ class PaystoForm extends BasePaymentOffsiteForm
                 $total_price->getCurrencyCode(), $configs['secret']),
             'x_invoice_num' => $payment->getOrderId(),
             'x_relay_response' => "TRUE",
-            'x_relay_url' => $this->getNotifyUrl(),
+            'x_relay_url' => $this->getNotifyUrl($paymentMachineName),
         ];
 
         $customerEmail = $order->getEmail();
+
         // if isset email
         if ($customerEmail) {
             $data['x_email'] = $customerEmail;
@@ -62,17 +67,16 @@ class PaystoForm extends BasePaymentOffsiteForm
 
         $data['x_line_item'] = $x_line_item;
 
-
-
         return $this->buildRedirectForm($form, $form_state, $this->payment_url, $data, 'post');
     }
 
     /**
+     * Return notify url
      * {@inheritdoc}
      */
-    public function getNotifyUrl()
+    public function getNotifyUrl($paymentName)
     {
-        $url = \Drupal::request()->getSchemeAndHttpHost().'/payment/notify/';
+        $url = \Drupal::request()->getSchemeAndHttpHost().'/payment/notify/'.$paymentName;
         return $url;
     }
 

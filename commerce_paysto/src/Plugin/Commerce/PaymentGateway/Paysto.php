@@ -8,6 +8,9 @@ use Drupal\Core\Form\FormStateInterface;
 use Symfony\Component\HttpFoundation\Request;
 use Drupal\commerce_order\Entity\Order;
 use Drupal\Core\Messenger\MessengerInterface;
+use Symfony\Component\HttpFoundation\RedirectResponse;
+
+
 
 /**
  * Provides the Paysto payment gateway.
@@ -170,14 +173,27 @@ class Paysto extends OffsitePaymentGatewayBase
      */
     public function onNotify(Request $request)
     {
-//        var_dump($this->entityId);die;
+
         $x_login = $this->configuration['x_login'];
         $secret = $this->configuration['secret'];
-
         // try to get values from request
         $orderId = self::getRequest('x_invoice_num');
+
+        if (!isset($orderId)) {
+            \Drupal::messenger()->addMessage($this->t('Site can not get info from you transaction. Please return to store and perform the order'), 'success');
+            $response = new RedirectResponse('/', 302);
+            $response->send();
+            return;
+        }
+
         $order = Order::load($orderId);
-        $orderTotal = self::getOrderTotalAmount($order->getTotalPrice());
+
+
+
+        $total_price = $order->getTotalPrice();
+        $orderTotal = ($total_price->getNumber()) ?
+            number_format($total_price->getNumber(), 2, '.', '') : 0.00;
+
         $x_response_code = self::getRequest('x_response_code');
         $x_trans_id = self::getRequest('x_trans_id');
         $x_MD5_Hash = self::getRequest('x_MD5_Hash');
@@ -187,7 +203,7 @@ class Paysto extends OffsitePaymentGatewayBase
         $paymentStorage = $this->entityTypeManager->getStorage('commerce_payment');
 
         if ($paymentStorage->state != 'complete') {
-            if (checkInServerList()) {
+            if ($this->checkInServerList()) {
                 if ($x_response_code == 1 && $calculated_x_MD5_Hash == $x_MD5_Hash) {
                     $payment = $paymentStorage->create([
                         'state' => 'complete',
@@ -260,23 +276,27 @@ class Paysto extends OffsitePaymentGatewayBase
         return md5($secret . $x_login . $x_trans_id . $x_amount);
     }
 
-
     /**
      * Get post or get method
      * @param null $param
      */
     public static function getRequest($param = null)
     {
-        $post = \Drupal::request()->request->get($param);
-        $get = \Drupal::request()->query->get($param);
-        if ($post) {
-            return $post;
-        }
-        if ($get) {
-            return $get;
-        } else {
+        try {
+            $post = \Drupal::request()->request->get($param);
+            $get = \Drupal::request()->query->get($param);
+            if ($post) {
+                return $post;
+            }
+            if ($get) {
+                return $get;
+            } else {
+                return null;
+            }
+        } catch (\Exception $exception) {
             return null;
         }
+
     }
 
     /**
