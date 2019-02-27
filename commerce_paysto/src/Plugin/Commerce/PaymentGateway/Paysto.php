@@ -18,7 +18,8 @@ use Symfony\Component\HttpFoundation\RedirectResponse;
 class Paysto extends OffsitePaymentGatewayBase
 {
     /**
-     * {@inheritdoc}
+     * Return default module settengs
+     * @return array
      */
     public function defaultConfiguration()
     {
