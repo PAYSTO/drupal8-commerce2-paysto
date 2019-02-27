@@ -44,7 +44,7 @@ class Paysto extends OffsitePaymentGatewayBase
     }
     
     /**
-     * Setup configuration
+     * Setup configuration (settings)
      * {@inheritdoc}
      */
     public function buildConfigurationForm(array $form, FormStateInterface $form_state)
