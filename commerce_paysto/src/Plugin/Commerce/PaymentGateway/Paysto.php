@@ -161,7 +161,6 @@ class Paysto extends OffsitePaymentGatewayBase
      */
     public function onNotify(Request $request)
     {
-        
         $x_login = $this->configuration['x_login'];
         $secret = $this->configuration['secret'];
         // try to get values from request
@@ -219,7 +218,6 @@ class Paysto extends OffsitePaymentGatewayBase
             $this->onReturn($order, $request);
             return;
         }
-        
     }
     
     /**
@@ -232,14 +230,7 @@ class Paysto extends OffsitePaymentGatewayBase
      * @param $secret
      * @return string
      */
-    public static function get_x_fp_hash(
-        $x_login,
-        $x_fp_sequence,
-        $x_fp_timestamp,
-        $x_amount,
-        $x_currency_code,
-        $secret
-    ) {
+    public static function get_x_fp_hash($x_login, $x_fp_sequence, $x_fp_timestamp, $x_amount, $x_currency_code, $secret) {
         $arr = [$x_login, $x_fp_sequence, $x_fp_timestamp, $x_amount, $x_currency_code];
         $str = implode('^', $arr);
         return hash_hmac('md5', $str, $secret);
@@ -325,7 +316,8 @@ class Paysto extends OffsitePaymentGatewayBase
         $response->send();
         return;
     }
-    
+
+
     /**
      * Callback order fail proceed
      * @param OrderInterface $order
