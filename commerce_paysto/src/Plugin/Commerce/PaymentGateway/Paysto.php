@@ -11,11 +11,24 @@ use Drupal\Core\Messenger\MessengerInterface;
 use Symfony\Component\HttpFoundation\RedirectResponse;
 
 /**
+ * Provides the Paysto payment gateway.
  * Class Paysto
  *
+ * @CommercePaymentGateway(
+ *   id = "paysto",
+ *   label = @Translation("Paysto"),
+ *   display_label = @Translation("Paysto"),
+ *   forms = {
+ *     "offsite-payment" = "Drupal\commerce_paysto\PluginForm\OffsiteRedirect\PaystoForm",
+ *   },
+ *   payment_method_types = {"credit_card"},
+ *   credit_card_types = {
+ *     "maestro", "mastercard", "visa", "mir",
+ *   },
+ * )
  * @package Drupal\commerce_paysto\Plugin\Commerce\PaymentGateway
  */
-class Paysto extends OffsitePaymentGatewayBase
+class Paysto extends OffsitePaymentGatewayBase implements PaystoPaymentInterface
 {
     /**
      * Return default module settengs
@@ -175,7 +188,8 @@ class Paysto extends OffsitePaymentGatewayBase
         }
         
         $order = Order::load($orderId);
-        
+
+
         $total_price = $order->getTotalPrice();
         $orderTotal = ($total_price->getNumber()) ?
             number_format($total_price->getNumber(), 2, '.', '') : 0.00;
@@ -202,7 +216,10 @@ class Paysto extends OffsitePaymentGatewayBase
                     ]);
                     $payment->save();
                     // Change order statuses to remove from busket
+                    $order->set('order_number', $orderId);
+                    $order->set('cart', 0);
                     $order->set('state', 'validation');
+                    $order->set('placed', time());
                     $order->save();
                 } else {
                     $this->onCancel($order, $request);
